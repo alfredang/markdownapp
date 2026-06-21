@@ -1,0 +1,28 @@
+# Xcode / build
+DerivedData/
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+
+# XcodeGen generates the project from project.yml
+MarkdownVault.xcodeproj/
+
+# Signing / secrets
+*.p12
+*.mobileprovision
+*.cer
+AuthKey_*.p8
+ExportOptions.plist
+build_*.log
+
+# macOS
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local project skills (installed locally; not for publishing — may contain creds)
+.claude/
