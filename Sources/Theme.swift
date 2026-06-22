@@ -6,7 +6,14 @@ enum Theme {
     static let primary = Color(hex: 0x7C5CFF)     // violet — Obsidian-flavoured accent
     static let secondary = Color(hex: 0x4C8DFF)   // blue — links / selected
     static let highlight = Color(hex: 0xFFB020)   // amber — badges / highlights
+
+    // The macOS shell is always dark, where the violet accent reads as low-contrast.
+    // Use white there for legible buttons/controls; keep the brand violet on iOS.
+    #if os(macOS)
+    static let accent = Color.white
+    #else
     static let accent = primary
+    #endif
 
     #if os(macOS)
     static let background = Color(nsColor: .windowBackgroundColor)

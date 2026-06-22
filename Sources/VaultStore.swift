@@ -23,11 +23,20 @@ final class VaultStore: ObservableObject {
         didSet { UserDefaults.standard.set(sortAscending, forKey: Keys.sortAsc); refresh() }
     }
 
+    /// Recently-opened vault folders, most-recent first (Obsidian-style vault switcher).
+    @Published var recentVaults: [URL] = []
+
+    /// Per-vault custom display names, keyed by folder path. Lets you rename a vault's
+    /// shown name without touching the folder on disk.
+    @Published private var displayNames: [String: String] = [:]
+
     private enum Keys {
         static let bookmark = "vault.bookmark"
         static let showHidden = "settings.showHidden"
         static let onboarded = "vault.onboarded"
         static let sortAsc = "settings.sortAscending"
+        static let recents = "vault.recents"
+        static let displayNames = "vault.displayNames"
     }
 
     private var accessing: URL?
@@ -35,6 +44,9 @@ final class VaultStore: ObservableObject {
     init() {
         showHiddenFiles = UserDefaults.standard.bool(forKey: Keys.showHidden)
         sortAscending = UserDefaults.standard.object(forKey: Keys.sortAsc) as? Bool ?? true
+        recentVaults = (UserDefaults.standard.array(forKey: Keys.recents) as? [String] ?? [])
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        displayNames = UserDefaults.standard.dictionary(forKey: Keys.displayNames) as? [String: String] ?? [:]
     }
 
     // MARK: - Menu bridges
@@ -50,7 +62,21 @@ final class VaultStore: ObservableObject {
         }
         rootURL = url
         saveBookmark(for: url)
+        addRecent(url)
         refresh()
+    }
+
+    /// Add a folder to the top of the recent-vaults list (deduped, capped).
+    private func addRecent(_ url: URL) {
+        var list = recentVaults.filter { $0.standardizedFileURL != url.standardizedFileURL }
+        list.insert(url, at: 0)
+        recentVaults = Array(list.prefix(10))
+        UserDefaults.standard.set(recentVaults.map(\.path), forKey: Keys.recents)
+    }
+
+    func removeRecent(_ url: URL) {
+        recentVaults.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        UserDefaults.standard.set(recentVaults.map(\.path), forKey: Keys.recents)
     }
 
     /// Copy the bundled sample vault into the app's Documents directory (writable, no
@@ -65,6 +91,7 @@ final class VaultStore: ObservableObject {
         stopAccessing()
         rootURL = dest
         saveBookmark(for: dest)
+        addRecent(dest)
         refresh()
         selectedFileURL = dest.appendingPathComponent("Welcome.md")
     }
@@ -99,6 +126,7 @@ final class VaultStore: ObservableObject {
         }
         rootURL = url
         if stale { saveBookmark(for: url) }
+        addRecent(url)
         refresh()
     }
 
@@ -132,7 +160,31 @@ final class VaultStore: ObservableObject {
         accessing = nil
     }
 
-    var vaultName: String { rootURL?.lastPathComponent ?? "No Vault" }
+    var vaultName: String {
+        guard let rootURL else { return "No Vault" }
+        return displayNames[rootURL.path] ?? rootURL.lastPathComponent
+    }
+
+    /// The vault's real folder name on disk (ignores any custom display name).
+    var vaultFolderName: String { rootURL?.lastPathComponent ?? "No Vault" }
+
+    /// Rename the *display* name of the current vault (does not move the folder).
+    /// Pass an empty/whitespace string to clear the override and fall back to the folder name.
+    func renameVault(to newName: String) {
+        guard let rootURL else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == rootURL.lastPathComponent {
+            displayNames[rootURL.path] = nil
+        } else {
+            displayNames[rootURL.path] = trimmed
+        }
+        UserDefaults.standard.set(displayNames, forKey: Keys.displayNames)
+    }
+
+    /// Display name for any vault URL (used by the recent-vaults list).
+    func displayName(for url: URL) -> String {
+        displayNames[url.path] ?? url.lastPathComponent
+    }
 
     // MARK: - Tree building
     func refresh() {

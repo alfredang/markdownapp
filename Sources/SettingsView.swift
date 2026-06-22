@@ -6,6 +6,9 @@ struct SettingsView: View {
     @AppStorage("settings.previewDefault") private var previewDefault = false
     @AppStorage("editor.multipleTabs") private var multipleTabs = true
 
+    @State private var showRename = false
+    @State private var renameText = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -18,6 +21,15 @@ struct SettingsView: View {
                         Label("Current Vault", systemImage: "folder.fill")
                         Spacer()
                         Text(store.vaultName).foregroundStyle(Theme.mutedInk)
+                        Button {
+                            renameText = store.vaultName
+                            showRename = true
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Rename this vault")
+                        .disabled(store.rootURL == nil)
                     }
                     .padding(.vertical, 14)
                     Divider()
@@ -38,6 +50,44 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline))
+
+                // Recent vaults — one-click switching, Obsidian-style.
+                let others = store.recentVaults.filter { $0.standardizedFileURL != store.rootURL?.standardizedFileURL }
+                if !others.isEmpty {
+                    Text("RECENT VAULTS").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(others.enumerated()), id: \.element) { index, url in
+                            if index > 0 { Divider() }
+                            HStack {
+                                Button {
+                                    store.openVault(at: url)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Label(store.displayName(for: url), systemImage: "folder")
+                                        Text(url.path)
+                                            .font(.caption2)
+                                            .foregroundStyle(Theme.mutedInk)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                Spacer()
+                                Button {
+                                    store.removeRecent(url)
+                                } label: {
+                                    Image(systemName: "xmark")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Remove from recent list")
+                            }
+                            .padding(.vertical, 12)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline))
+                }
 
                 // Display
                 Text("DISPLAY").font(.caption.weight(.semibold)).foregroundStyle(Theme.mutedInk)

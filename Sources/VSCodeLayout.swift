@@ -72,6 +72,13 @@ struct VSCodeLayout: View {
             }
         }
         .task { store.restoreVaultIfNeeded() }
+        // Bridge the "Open Vault Folder…" command / sidebar button to a native folder picker.
+        .onChange(of: store.openVaultRequested) { _, requested in
+            if requested {
+                store.openVaultRequested = false
+                presentOpenVaultPanel()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .toggleTerminal)) { _ in
             terminalVisible.toggle()
         }
@@ -145,6 +152,22 @@ struct VSCodeLayout: View {
     private func closeTab(_ url: URL) {
         openTabs.removeAll { $0 == url }
         if store.selectedFileURL == url { store.selectedFileURL = openTabs.last }
+    }
+
+    /// Native folder chooser — pick any local folder of Markdown to open as a vault,
+    /// the same way Obsidian opens a vault.
+    private func presentOpenVaultPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Open Vault"
+        panel.message = "Choose a folder of Markdown files to open as a vault."
+        panel.directoryURL = store.rootURL
+        if panel.runModal() == .OK, let url = panel.url {
+            store.openVault(at: url)
+        }
     }
 
     private var editorArea: some View {
@@ -325,8 +348,27 @@ struct VSCodeLayout: View {
 
     @ViewBuilder
     private func sheet<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .frame(minWidth: 460, minHeight: 420)
+        SheetContainer { content() }
+    }
+}
+
+/// Wraps any sheet's content with a header that always offers a way out:
+/// a visible "Done" button and the Escape key both dismiss it.
+private struct SheetContainer<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.cancelAction)   // Esc also dismisses
+            }
+            .padding(12)
+            content
+        }
+        .frame(minWidth: 460, minHeight: 440)
     }
 }
 
