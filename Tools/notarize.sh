@@ -25,7 +25,7 @@ KEY_PATH="${ASC_PRIVATE_KEY_PATH/#\~/$HOME}"
 
 # 1. Resolve the Developer ID Application identity.
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-  | grep "Developer ID Application" | head -1 | sed -E 's/.*"([^"]*)".*/\1/')
+  | grep "Developer ID Application" | head -1 | sed -E 's/.*"([^"]*)".*/\1/' || true)
 if [ -z "${IDENTITY:-}" ]; then
   echo "❌ No 'Developer ID Application' certificate in the keychain."
   echo "   Create it once: Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates… ▸ + ▸ Developer ID Application"
