@@ -23,6 +23,28 @@ enum Theme {
     static let hairline = Color.primary.opacity(0.08)
 }
 
+/// VS Code "Dark Modern" palette tokens for the desktop editor chrome.
+enum VSCode {
+    static let accent      = Color(hex: 0x0078D4)   // focus blue
+    static let editorBg    = Color(hex: 0x1E1E1E)
+    static let sidebarBg   = Color(hex: 0x181818)
+    static let activityBg  = Color(hex: 0x181818)
+    static let panelBg     = Color(hex: 0x1E1E1E)
+    static let tabBarBg    = Color(hex: 0x181818)
+    static let tabActiveBg = Color(hex: 0x1E1E1E)
+    static let border      = Color(hex: 0x2B2B2B)
+    static let fg          = Color(hex: 0xCCCCCC)
+    static let muted       = Color(hex: 0x8B8B8B)
+    static let activeIcon  = Color(hex: 0xE7E7E7)
+    static let hoverBg     = Color.white.opacity(0.06)
+    static let selectionBg = Color(hex: 0x04395E)   // explorer selected row
+
+    // Terminal colors (sRGB components, 0-1)
+    static let termBg:    (r: Double, g: Double, b: Double) = (0x1E/255, 0x1E/255, 0x1E/255)
+    static let termFg:    (r: Double, g: Double, b: Double) = (0xCC/255, 0xCC/255, 0xCC/255)
+    static let termCaret: (r: Double, g: Double, b: Double) = (0xAE/255, 0xAF/255, 0xAD/255)
+}
+
 extension Color {
     init(hex: UInt32, alpha: Double = 1) {
         let r = Double((hex >> 16) & 0xFF) / 255

@@ -1,0 +1,16 @@
+{
+  "_comment": "Reference hooks config for managing this app. Mirrored into .claude/settings.json where Claude Code executes it. Auto-regenerates the Xcode project whenever project.yml changes.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/regenerate-xcodeproj.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

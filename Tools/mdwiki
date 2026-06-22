@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""
+mdwiki — a tiny CLI for creating/updating Markdown content in a vault.
+
+Designed so an AI agent (e.g. Claude Code) or a human can make deterministic edits to a
+Karpathy-style LLM-maintained wiki without hand-writing file plumbing.
+
+Layers (run from the vault root, or pass --vault):
+  raw/    immutable sources
+  wiki/   LLM-maintained pages (index.md, log.md, entities/, concepts/)
+
+Commands:
+  mdwiki init                              Scaffold wiki/ + CLAUDE.md + raw/
+  mdwiki new  <kind> <name> [--title T]    Create entities/<name>.md or concepts/<name>.md
+  mdwiki set  <path> <body-file|-->        Replace a page body (frontmatter preserved/created)
+  mdwiki append <path> <text>              Append text to a page
+  mdwiki frontmatter <path> k=v [k=v ...]  Set YAML frontmatter keys
+  mdwiki link <path> <target>             Append a [[target]] wikilink under "## Related"
+  mdwiki todo <path> <text>               Add a "- [ ] text" checkbox to a page
+  mdwiki check <path> <substr>            Toggle the first matching checkbox done
+  mdwiki index                            Rebuild wiki/index.md from page frontmatter
+  mdwiki log  <op> <summary>              Append a dated line to wiki/log.md
+  mdwiki list [kind]                       List wiki pages (optionally entities|concepts)
+"""
+import argparse, datetime, os, re, sys
+
+def vault_root(arg):
+    return os.path.abspath(arg or os.environ.get("MDVAULT") or os.getcwd())
+
+def read(p):
+    return open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+
+def write(p, s):
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    open(p, "w", encoding="utf-8").write(s)
+
+def split_front(text):
+    m = re.match(r"^---\n(.*?)\n---\n?(.*)$", text, re.S)
+    if m:
+        fm = {}
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                fm[k.strip()] = v.strip()
+        return fm, m.group(2)
+    return {}, text
+
+def join_front(fm, body):
+    if not fm:
+        return body
+    lines = "\n".join(f"{k}: {v}" for k, v in fm.items())
+    return f"---\n{lines}\n---\n{body}"
+
+def today():
+    return datetime.date.today().isoformat()
+
+def cmd_init(root, _):
+    for d in ("wiki", "wiki/entities", "wiki/concepts", "raw"):
+        os.makedirs(os.path.join(root, d), exist_ok=True)
+    idx = os.path.join(root, "wiki/index.md")
+    if not os.path.exists(idx):
+        write(idx, "# Wiki Index\n\n## Entities\n_None yet._\n\n## Concepts\n_None yet._\n")
+    log = os.path.join(root, "wiki/log.md")
+    if not os.path.exists(log):
+        write(log, "# Wiki Log\n\nAppend-only. Newest at the bottom.\n")
+    print("Initialized wiki at", root)
+
+def page_path(root, kind, name):
+    folder = "entities" if kind.startswith("ent") else "concepts"
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", name).strip("_").lower()
+    return os.path.join(root, "wiki", folder, safe + ".md")
+
+def cmd_new(root, a):
+    p = page_path(root, a.kind, a.name)
+    if os.path.exists(p):
+        print("exists:", p); return
+    title = a.title or a.name
+    fm = {"tags": a.kind, "updated": today(), "sources": "0"}
+    write(p, join_front(fm, f"# {title}\n\n_Summary pending._\n\n## Related\n"))
+    print("created:", p)
+
+def resolve(root, path):
+    return path if os.path.isabs(path) else os.path.join(root, path)
+
+def cmd_set(root, a):
+    p = resolve(root, a.path)
+    body = sys.stdin.read() if a.body == "-" else read(a.body)
+    fm, _ = split_front(read(p))
+    fm["updated"] = today()
+    write(p, join_front(fm, body))
+    print("set:", p)
+
+def cmd_append(root, a):
+    p = resolve(root, a.path)
+    cur = read(p)
+    write(p, cur + ("" if cur.endswith("\n") or not cur else "\n") + a.text + "\n")
+    print("appended:", p)
+
+def cmd_frontmatter(root, a):
+    p = resolve(root, a.path)
+    fm, body = split_front(read(p))
+    for kv in a.pairs:
+        k, v = kv.split("=", 1); fm[k] = v
+    fm.setdefault("updated", today())
+    write(p, join_front(fm, body))
+    print("frontmatter:", fm)
+
+def cmd_link(root, a):
+    p = resolve(root, a.path); text = read(p)
+    if "## Related" not in text:
+        text += "\n## Related\n"
+    text += f"- [[{a.target}]]\n"
+    write(p, text); print(f"linked {a.path} -> [[{a.target}]]")
+
+def cmd_todo(root, a):
+    p = resolve(root, a.path); cur = read(p)
+    write(p, cur + ("" if cur.endswith("\n") or not cur else "\n") + f"- [ ] {a.text}\n")
+    print("todo added")
+
+def cmd_check(root, a):
+    p = resolve(root, a.path); lines = read(p).splitlines()
+    for i, ln in enumerate(lines):
+        if a.substr in ln and ln.lstrip().startswith("- ["):
+            lines[i] = ln.replace("- [ ]", "- [x]", 1) if "- [ ]" in ln else ln.replace("- [x]", "- [ ]", 1)
+            write(p, "\n".join(lines) + "\n"); print("toggled:", lines[i].strip()); return
+    print("no matching checkbox")
+
+def cmd_index(root, _):
+    base = os.path.join(root, "wiki")
+    out = ["# Wiki Index", ""]
+    for kind, folder in (("Entities", "entities"), ("Concepts", "concepts")):
+        out.append(f"## {kind}")
+        d = os.path.join(base, folder)
+        rows = []
+        for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+            if not f.endswith(".md"):
+                continue
+            fm, body = split_front(read(os.path.join(d, f)))
+            m = re.search(r"^#\s+(.+)$", body, re.M)
+            title = m.group(1) if m else f[:-3]
+            rows.append(f"- [[{f[:-3]}]] — {title}")
+        out.append("\n".join(rows) if rows else "_None yet._")
+        out.append("")
+    write(os.path.join(base, "index.md"), "\n".join(out))
+    print("index rebuilt")
+
+def cmd_log(root, a):
+    p = os.path.join(root, "wiki", "log.md")
+    line = f"## [{today()}] {a.op} | {a.summary}\n"
+    write(p, read(p) + line); print("logged:", line.strip())
+
+def cmd_list(root, a):
+    base = os.path.join(root, "wiki")
+    kinds = [a.kind] if a.kind else ["entities", "concepts"]
+    for k in kinds:
+        d = os.path.join(base, k)
+        for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+            if f.endswith(".md"):
+                print(f"{k}/{f}")
+
+def main():
+    ap = argparse.ArgumentParser(prog="mdwiki", description="Create/update Markdown in a vault.")
+    ap.add_argument("--vault", default=None)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("init")
+    n = sub.add_parser("new"); n.add_argument("kind", choices=["entity", "concept", "entities", "concepts"]); n.add_argument("name"); n.add_argument("--title")
+    s = sub.add_parser("set"); s.add_argument("path"); s.add_argument("body")
+    a = sub.add_parser("append"); a.add_argument("path"); a.add_argument("text")
+    fmp = sub.add_parser("frontmatter"); fmp.add_argument("path"); fmp.add_argument("pairs", nargs="+")
+    lk = sub.add_parser("link"); lk.add_argument("path"); lk.add_argument("target")
+    td = sub.add_parser("todo"); td.add_argument("path"); td.add_argument("text")
+    ck = sub.add_parser("check"); ck.add_argument("path"); ck.add_argument("substr")
+    sub.add_parser("index")
+    lg = sub.add_parser("log"); lg.add_argument("op"); lg.add_argument("summary")
+    ls = sub.add_parser("list"); ls.add_argument("kind", nargs="?")
+    args = ap.parse_args()
+    root = vault_root(args.vault)
+    {
+        "init": cmd_init, "new": cmd_new, "set": cmd_set, "append": cmd_append,
+        "frontmatter": cmd_frontmatter, "link": cmd_link, "todo": cmd_todo, "check": cmd_check,
+        "index": cmd_index, "log": cmd_log, "list": cmd_list,
+    }[args.cmd](root, args)
+
+if __name__ == "__main__":
+    main()

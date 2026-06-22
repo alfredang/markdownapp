@@ -5,14 +5,29 @@ struct MarkdownPreview: View {
     let markdown: String
     /// Resolve an image reference (`src`) to an on-disk URL relative to the current file.
     var resolveImage: (String) -> URL?
+    /// Called with the document-wide checkbox index when a checklist box is tapped
+    /// (Obsidian-style live toggling). When nil, checkboxes are read-only.
+    var onToggleCheckbox: ((Int) -> Void)? = nil
 
     private var blocks: [MarkdownBlock] { MarkdownParser.parse(markdown) }
+
+    /// Each block paired with the running count of checkboxes that precede it, so a tapped
+    /// box maps back to the Nth `- [ ]` line in the source.
+    private var renderItems: [(block: MarkdownBlock, checkboxStart: Int)] {
+        var result: [(MarkdownBlock, Int)] = []
+        var cb = 0
+        for b in blocks {
+            result.append((b, cb))
+            if case let .checklist(items) = b { cb += items.count }
+        }
+        return result
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                    view(for: block)
+                ForEach(Array(renderItems.enumerated()), id: \.offset) { _, item in
+                    view(for: item.block, checkboxStart: item.checkboxStart)
                 }
             }
             .padding(20)
@@ -23,7 +38,7 @@ struct MarkdownPreview: View {
     }
 
     @ViewBuilder
-    private func view(for block: MarkdownBlock) -> some View {
+    private func view(for block: MarkdownBlock, checkboxStart: Int = 0) -> some View {
         switch block {
         case let .heading(level, text):
             inline(text).font(headingFont(level)).bold().padding(.top, level <= 2 ? 6 : 2)
@@ -55,8 +70,14 @@ struct MarkdownPreview: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(items.indices, id: \.self) { idx in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: items[idx].done ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(items[idx].done ? Theme.accent : Theme.mutedInk)
+                        Button {
+                            onToggleCheckbox?(checkboxStart + idx)
+                        } label: {
+                            Image(systemName: items[idx].done ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(items[idx].done ? Theme.accent : Theme.mutedInk)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(onToggleCheckbox == nil)
                         inline(items[idx].text)
                             .strikethrough(items[idx].done, color: Theme.mutedInk)
                             .foregroundStyle(items[idx].done ? Theme.mutedInk : Theme.ink)

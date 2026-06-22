@@ -37,13 +37,10 @@ final class VaultStore: ObservableObject {
     // MARK: - Opening / restoring a vault
     func openVault(at url: URL) {
         stopAccessing()
-        guard url.startAccessingSecurityScopedResource() else {
-            // Some pickers already grant access without the scoped call.
-            self.rootURL = url
-            refresh()
-            return
+        // Non-sandboxed build: a scoped call isn't required, but harmless if it succeeds.
+        if url.startAccessingSecurityScopedResource() {
+            accessing = url
         }
-        accessing = url
         rootURL = url
         saveBookmark(for: url)
         refresh()
@@ -77,17 +74,19 @@ final class VaultStore: ObservableObject {
         }
         guard let data = UserDefaults.standard.data(forKey: Keys.bookmark) else { return }
         var stale = false
-        let options: URL.BookmarkResolutionOptions = {
-            #if os(macOS)
-            return [.withSecurityScope]
-            #else
-            return []
-            #endif
-        }()
-        guard let url = try? URL(resolvingBookmarkData: data,
-                                 options: options,
-                                 relativeTo: nil,
-                                 bookmarkDataIsStale: &stale) else { return }
+        // Try a plain resolution first; fall back to a security-scoped one so bookmarks
+        // saved by an earlier sandboxed build still resolve.
+        var resolved: URL?
+        for options in bookmarkResolutionOptionSets {
+            if let url = try? URL(resolvingBookmarkData: data,
+                                  options: options,
+                                  relativeTo: nil,
+                                  bookmarkDataIsStale: &stale) {
+                resolved = url
+                break
+            }
+        }
+        guard let url = resolved else { return }
         if url.startAccessingSecurityScopedResource() {
             accessing = url
         }
@@ -104,15 +103,19 @@ final class VaultStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: Keys.bookmark)
     }
 
+    /// Resolution options to attempt, in order. Plain bookmarks work in this non-sandboxed
+    /// build; the security-scoped variant is kept as a fallback for legacy bookmarks.
+    private var bookmarkResolutionOptionSets: [URL.BookmarkResolutionOptions] {
+        #if os(macOS)
+        return [[], [.withSecurityScope]]
+        #else
+        return [[]]
+        #endif
+    }
+
     private func saveBookmark(for url: URL) {
-        let options: URL.BookmarkCreationOptions = {
-            #if os(macOS)
-            return [.withSecurityScope]
-            #else
-            return []
-            #endif
-        }()
-        if let data = try? url.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil) {
+        // Non-sandboxed macOS uses plain bookmarks (no security scope needed).
+        if let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
             UserDefaults.standard.set(data, forKey: Keys.bookmark)
         }
     }
