@@ -19,7 +19,7 @@ struct VSCodeLayout: View {
 
     @State private var showSettings = false
     @State private var showAbout = false
-    @State private var editorMode: EditorMode = .preview
+    @State private var editorMode: EditorMode = .edit   // Live Preview (editable, styled)
     @State private var showQuickOpen = false
     @State private var activeExtension: String?
     @AppStorage("editor.multipleTabs") private var multipleTabs = true
