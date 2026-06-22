@@ -313,11 +313,11 @@ enum MarkdownStyler {
     static let italic = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 15), toHaveTrait: .italicFontMask)
     static let code   = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
 
-    /// Comfortable, Obsidian-like line spacing.
+    /// Comfortable reading line-height. Block separation comes from the blank lines in the
+    /// Markdown itself, so we don't add paragraphSpacing on top (that double-spaces).
     static let paragraph: NSParagraphStyle = {
         let p = NSMutableParagraphStyle()
-        p.lineSpacing = 6
-        p.paragraphSpacing = 6
+        p.lineHeightMultiple = 1.25
         return p
     }()
 
