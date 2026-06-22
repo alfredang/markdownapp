@@ -20,18 +20,19 @@ struct CodeEditorView: NSViewRepresentable {
         tv.delegate = context.coordinator
         tv.isRichText = false
         tv.allowsUndo = true
-        tv.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        tv.font = MarkdownStyler.body
         tv.textColor = fg
         tv.backgroundColor = bg
         tv.drawsBackground = true
         tv.insertionPointColor = NSColor(srgbRed: VSCode.termCaret.r, green: VSCode.termCaret.g, blue: VSCode.termCaret.b, alpha: 1)
-        tv.textContainerInset = NSSize(width: 10, height: 10)
+        tv.textContainerInset = NSSize(width: 14, height: 14)
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
         tv.isContinuousSpellCheckingEnabled = false
         tv.string = text
         context.coordinator.textView = tv
+        MarkdownStyler.apply(to: tv.textStorage, baseColor: fg)
         return scroll
     }
 
@@ -41,6 +42,7 @@ struct CodeEditorView: NSViewRepresentable {
             let sel = tv.selectedRange()
             tv.string = text
             tv.setSelectedRange(NSRange(location: min(sel.location, (text as NSString).length), length: 0))
+            MarkdownStyler.apply(to: tv.textStorage, baseColor: fg)
         }
     }
 
@@ -58,6 +60,8 @@ struct CodeEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let tv = textView else { return }
             parent.text = tv.string
+            MarkdownStyler.apply(to: tv.textStorage,
+                                 baseColor: NSColor(srgbRed: VSCode.termFg.r, green: VSCode.termFg.g, blue: VSCode.termFg.b, alpha: 1))
             detectSlash(tv)
         }
 
@@ -160,5 +164,77 @@ struct SlashCommand {
         SlashCommand(title: "💡  Idea", symbol: "lightbulb", snippet: "💡 "),
         SlashCommand(title: "More Emoji…", symbol: "face.smiling", snippet: "", opensEmojiPalette: true),
     ]
+}
+
+/// Obsidian-style "Live Preview": styles Markdown inline in the editable NSTextView so headings
+/// look like headings, **bold** is bold, `code` is monospaced, and links are colored — while the
+/// underlying text stays plain Markdown.
+enum MarkdownStyler {
+    static let body   = NSFont.systemFont(ofSize: 15)
+    static let bold   = NSFont.boldSystemFont(ofSize: 15)
+    static let italic = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 15), toHaveTrait: .italicFontMask)
+    static let code   = NSFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
+
+    static func heading(_ level: Int) -> NSFont {
+        switch level {
+        case 1:  return .boldSystemFont(ofSize: 28)
+        case 2:  return .boldSystemFont(ofSize: 23)
+        case 3:  return .boldSystemFont(ofSize: 19)
+        default: return .boldSystemFont(ofSize: 16)
+        }
+    }
+
+    private static func c(_ hex: UInt32) -> NSColor {
+        NSColor(srgbRed: Double((hex >> 16) & 0xFF) / 255,
+                green: Double((hex >> 8) & 0xFF) / 255,
+                blue: Double(hex & 0xFF) / 255, alpha: 1)
+    }
+
+    static func apply(to ts: NSTextStorage?, baseColor: NSColor) {
+        guard let ts = ts else { return }
+        let text = ts.string as NSString
+        let full = NSRange(location: 0, length: ts.length)
+        ts.beginEditing()
+        ts.setAttributes([.font: body, .foregroundColor: baseColor], range: full)
+
+        // Per-line: headings and block quotes.
+        text.enumerateSubstrings(in: full, options: .byLines) { sub, range, _, _ in
+            guard let sub = sub else { return }
+            let t = sub.trimmingCharacters(in: .whitespaces)
+            if let lvl = headingLevel(t) {
+                ts.addAttribute(.font, value: heading(lvl), range: range)
+                ts.addAttribute(.foregroundColor, value: c(0xFFFFFF), range: range)
+            } else if t.hasPrefix(">") {
+                ts.addAttribute(.font, value: italic, range: range)
+                ts.addAttribute(.foregroundColor, value: c(0x9B9B9B), range: range)
+            }
+        }
+
+        // Inline spans.
+        style(#"\*\*([^*\n]+)\*\*"#, text) { ts.addAttribute(.font, value: bold, range: $0) }
+        style(#"(?<![*\w])\*(?![*\s])([^*\n]+?)\*(?![*\w])"#, text) { ts.addAttribute(.font, value: italic, range: $0) }
+        style(#"`([^`\n]+)`"#, text) {
+            ts.addAttribute(.font, value: code, range: $0)
+            ts.addAttribute(.foregroundColor, value: c(0xCE9178), range: $0)
+        }
+        style(#"\[\[[^\]\n]+\]\]"#, text) { ts.addAttribute(.foregroundColor, value: c(0x9D7CFF), range: $0) }
+        style(#"\[[^\]\n]+\]\([^)\s]+\)"#, text) { ts.addAttribute(.foregroundColor, value: c(0x4FA6ED), range: $0) }
+
+        ts.endEditing()
+    }
+
+    private static func headingLevel(_ t: String) -> Int? {
+        guard t.hasPrefix("#") else { return nil }
+        let hashes = t.prefix { $0 == "#" }.count
+        guard (1...6).contains(hashes), t.dropFirst(hashes).first == " " else { return nil }
+        return min(hashes, 4)
+    }
+
+    private static func style(_ pattern: String, _ text: NSString, _ apply: (NSRange) -> Void) {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return }
+        re.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { m, _, _ in
+            if let r = m?.range { apply(r) }
+        }
+    }
 }
 #endif
