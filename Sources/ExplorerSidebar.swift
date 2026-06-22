@@ -56,6 +56,11 @@ struct ExplorerSidebar: View {
                 Button("New File…") { newName = "Untitled.md"; showNewFile = true }
                 Button("New Folder…") { newName = "New Folder"; showNewFolder = true }
                 Divider()
+                Picker("Sort By Name", selection: $store.sortAscending) {
+                    Label("Ascending (A → Z)", systemImage: "arrow.up").tag(true)
+                    Label("Descending (Z → A)", systemImage: "arrow.down").tag(false)
+                }
+                Divider()
                 Button("Open Vault…") { store.requestOpenVault() }
                 Button("Refresh") { store.refresh() }
                 Button("Collapse All") { expanded = store.rootURL.map { [$0] } ?? [] }

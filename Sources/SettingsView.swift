@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: VaultStore
     @AppStorage("settings.previewDefault") private var previewDefault = false
+    @AppStorage("editor.multipleTabs") private var multipleTabs = true
 
     var body: some View {
         ScrollView {
@@ -50,6 +51,13 @@ struct SettingsView: View {
                         Label("Open Notes in Preview", systemImage: "doc.text.image")
                     }
                     .padding(.vertical, 12)
+                    #if os(macOS)
+                    Divider()
+                    Toggle(isOn: $multipleTabs) {
+                        Label("Show Multiple Editor Tabs", systemImage: "rectangle.split.3x1")
+                    }
+                    .padding(.vertical, 12)
+                    #endif
                 }
                 .padding(.horizontal, 16)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

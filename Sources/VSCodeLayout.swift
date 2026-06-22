@@ -22,6 +22,8 @@ struct VSCodeLayout: View {
     @State private var editorMode: EditorMode = .preview
     @State private var showQuickOpen = false
     @State private var activeExtension: String?
+    @AppStorage("editor.multipleTabs") private var multipleTabs = true
+    @State private var openTabs: [URL] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -92,6 +94,10 @@ struct VSCodeLayout: View {
         .onReceive(NotificationCenter.default.publisher(for: .openExtension)) { note in
             activeExtension = note.object as? String
         }
+        .onChange(of: store.selectedFileURL) { _, url in openTab(url) }
+        .onChange(of: multipleTabs) { _, multi in
+            if !multi { openTabs = store.selectedFileURL.map { [$0] } ?? [] }
+        }
         .sheet(isPresented: $showSettings) { sheet { SettingsView() } }
         .sheet(isPresented: $showAbout) { sheet { AboutView() } }
         .sheet(item: Binding(get: { activeExtension.map { IdentifiedString($0) } },
@@ -123,9 +129,27 @@ struct VSCodeLayout: View {
     }
 
     // MARK: - Editor area
+    private var displayedTabs: [URL] {
+        multipleTabs ? openTabs : (store.selectedFileURL.map { [$0] } ?? [])
+    }
+
+    private func openTab(_ url: URL?) {
+        guard let url else { return }
+        if multipleTabs {
+            if !openTabs.contains(url) { openTabs.append(url) }
+        } else {
+            openTabs = [url]
+        }
+    }
+
+    private func closeTab(_ url: URL) {
+        openTabs.removeAll { $0 == url }
+        if store.selectedFileURL == url { store.selectedFileURL = openTabs.last }
+    }
+
     private var editorArea: some View {
         VStack(spacing: 0) {
-            if store.selectedFileURL != nil {
+            if !displayedTabs.isEmpty {
                 editorTabBar
                 Divider().overlay(VSCode.border)
             }
@@ -154,31 +178,44 @@ struct VSCodeLayout: View {
             FileNode.editableExtensions.contains($0.pathExtension.lowercased())
         } ?? false
         HStack(spacing: 0) {
-            if let url = store.selectedFileURL {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 11)).foregroundStyle(Color(hex: 0x6FB3D2))
-                    Text(url.lastPathComponent)
-                        .font(.system(size: 12)).foregroundStyle(VSCode.fg)
-                    Button { store.selectedFileURL = nil } label: {
-                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(VSCode.muted).frame(width: 16, height: 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(displayedTabs, id: \.self) { url in
+                        editorTab(url)
                     }
-                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 12)
-                .frame(height: 35)
-                .background(VSCode.tabActiveBg)
-                .overlay(alignment: .top) { Rectangle().fill(VSCode.accent).frame(height: 1) }
-                .overlay(alignment: .trailing) { Divider().overlay(VSCode.border) }
             }
-            Spacer()
+            Spacer(minLength: 8)
             if isEditable {
                 ModeToggle(mode: $editorMode).padding(.trailing, 10)
             }
         }
         .frame(height: 35)
         .background(VSCode.tabBarBg)
+    }
+
+    private func editorTab(_ url: URL) -> some View {
+        let active = store.selectedFileURL == url
+        return HStack(spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11)).foregroundStyle(Color(hex: 0x6FB3D2))
+            Text(url.lastPathComponent)
+                .font(.system(size: 12))
+                .foregroundStyle(active ? VSCode.fg : VSCode.muted)
+                .lineLimit(1)
+            Button { closeTab(url) } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(VSCode.muted).frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 35)
+        .background(active ? VSCode.tabActiveBg : Color.clear)
+        .overlay(alignment: .top) { Rectangle().fill(active ? VSCode.accent : Color.clear).frame(height: 1) }
+        .overlay(alignment: .trailing) { Divider().overlay(VSCode.border) }
+        .contentShape(Rectangle())
+        .onTapGesture { store.selectedFileURL = url }
     }
 
     /// VS Code-style title bar: traffic-light gap · centered command/search bar · layout toggles.

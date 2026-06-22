@@ -18,16 +18,23 @@ final class VaultStore: ObservableObject {
         didSet { UserDefaults.standard.set(showHiddenFiles, forKey: Keys.showHidden); refresh() }
     }
 
+    /// Explorer sort direction (folders always group first). Persisted.
+    @Published var sortAscending = true {
+        didSet { UserDefaults.standard.set(sortAscending, forKey: Keys.sortAsc); refresh() }
+    }
+
     private enum Keys {
         static let bookmark = "vault.bookmark"
         static let showHidden = "settings.showHidden"
         static let onboarded = "vault.onboarded"
+        static let sortAsc = "settings.sortAscending"
     }
 
     private var accessing: URL?
 
     init() {
         showHiddenFiles = UserDefaults.standard.bool(forKey: Keys.showHidden)
+        sortAscending = UserDefaults.standard.object(forKey: Keys.sortAsc) as? Bool ?? true
     }
 
     // MARK: - Menu bridges
@@ -155,7 +162,8 @@ final class VaultStore: ObservableObject {
                 .map { buildNode(at: $0) }
                 .sorted { lhs, rhs in
                     if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory && !rhs.isDirectory }
-                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    let order = lhs.name.localizedStandardCompare(rhs.name)
+                    return sortAscending ? order == .orderedAscending : order == .orderedDescending
                 }
             children = kids
         }
