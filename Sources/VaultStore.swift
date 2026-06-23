@@ -1,5 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import CoreServices   // FSEvents — live folder watching
+#endif
 
 /// Owns the currently-open Obsidian-compatible vault (a local folder), its file tree,
 /// the selected file, and all file-system CRUD. Persists the vault via a security-scoped
@@ -64,6 +67,7 @@ final class VaultStore: ObservableObject {
         saveBookmark(for: url)
         addRecent(url)
         refresh()
+        startWatching(url)
     }
 
     /// Add a folder to the top of the recent-vaults list (deduped, capped).
@@ -93,6 +97,7 @@ final class VaultStore: ObservableObject {
         saveBookmark(for: dest)
         addRecent(dest)
         refresh()
+        startWatching(dest)
         selectedFileURL = dest.appendingPathComponent("Welcome.md")
     }
 
@@ -128,9 +133,11 @@ final class VaultStore: ObservableObject {
         if stale { saveBookmark(for: url) }
         addRecent(url)
         refresh()
+        startWatching(url)
     }
 
     func closeVault() {
+        stopWatching()
         stopAccessing()
         rootURL = nil
         rootNode = nil
@@ -191,6 +198,57 @@ final class VaultStore: ObservableObject {
         guard let rootURL else { rootNode = nil; return }
         rootNode = buildNode(at: rootURL, isRoot: true)
     }
+
+    // MARK: - Live folder watching (auto-sync)
+    #if os(macOS)
+    private var fsStream: FSEventStreamRef?
+    private var autoRefreshWork: DispatchWorkItem?
+
+    /// Watch the vault folder (recursively) for any on-disk change — files created,
+    /// deleted, or renamed by agents, git, Finder, the terminal — and refresh the tree.
+    private func startWatching(_ url: URL) {
+        stopWatching()
+        let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+            guard let info else { return }
+            let store = Unmanaged<VaultStore>.fromOpaque(info).takeUnretainedValue()
+            Task { @MainActor in store.scheduleAutoRefresh() }
+        }
+        var context = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil, release: nil, copyDescription: nil)
+        let flags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagFileEvents)
+        guard let stream = FSEventStreamCreate(
+            kCFAllocatorDefault, callback, &context,
+            [url.path] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.4,                      // coalesce bursts within 0.4s
+            flags) else { return }
+        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
+        FSEventStreamStart(stream)
+        fsStream = stream
+    }
+
+    private func stopWatching() {
+        guard let stream = fsStream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        fsStream = nil
+    }
+
+    /// Debounce rapid change bursts into a single refresh.
+    func scheduleAutoRefresh() {
+        autoRefreshWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.refresh() }
+        autoRefreshWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+    #else
+    private func startWatching(_ url: URL) {}
+    private func stopWatching() {}
+    #endif
 
     private func buildNode(at url: URL, isRoot: Bool = false) -> FileNode {
         let name = url.lastPathComponent

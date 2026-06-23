@@ -52,6 +52,14 @@ struct ExplorerSidebar: View {
                 .foregroundStyle(VSCode.muted)
                 .tracking(0.6)
             Spacer()
+            Button { store.refresh() } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12))
+                    .foregroundStyle(VSCode.muted)
+            }
+            .buttonStyle(.plain)
+            .help("Refresh file tree")
+            .padding(.trailing, 2)
             Menu {
                 Button("New File…") { newName = "Untitled.md"; showNewFile = true }
                 Button("New Folder…") { newName = "New Folder"; showNewFolder = true }

@@ -79,6 +79,11 @@ struct VSCodeLayout: View {
                 presentOpenVaultPanel()
             }
         }
+        // Safety net: re-sync the tree when the app regains focus (e.g. after editing
+        // files in Finder or another tool), on top of the live FSEvents watcher.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refresh()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .toggleTerminal)) { _ in
             terminalVisible.toggle()
         }
