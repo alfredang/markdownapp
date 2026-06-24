@@ -260,15 +260,9 @@ final class VaultStore: ObservableObject {
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsPackageDescendants])) ?? []
             let kids = contents
+                // Show every file type (only the hidden-files toggle filters dotfiles).
+                // Non-editable files still open to a graceful "Unsupported File" view.
                 .filter { showHiddenFiles || !$0.lastPathComponent.hasPrefix(".") }
-                .filter { url in
-                    let dir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                    if dir { return true }
-                    let e = url.pathExtension.lowercased()
-                    return FileNode.editableExtensions.contains(e)
-                        || FileNode.imageExtensions.contains(e)
-                        || e == "pdf"
-                }
                 .map { buildNode(at: $0) }
                 .sorted { lhs, rhs in
                     if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory && !rhs.isDirectory }
