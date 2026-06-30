@@ -13,6 +13,10 @@ interactive todos, and an **extension marketplace** (including an LLM-powered Wi
 [![Xcode](https://img.shields.io/badge/Xcode-26-1575F9?logo=xcode)](https://developer.apple.com/xcode/)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 
+<a href="https://apps.apple.com/us/app/tertiary-markdown/id6782659815"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download Tertiary Markdown on the App Store" height="44"></a>
+
+> 📲 **Now on the App Store** — [**Download Tertiary Markdown**](https://apps.apple.com/us/app/tertiary-markdown/id6782659815) for Mac, iPad, and iPhone.
+
 ![Markdown Vault — VS Code-style macOS workspace with explorer, rendered Markdown, and an embedded terminal](screenshot.png)
 
 ## Features
